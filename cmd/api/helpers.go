@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -42,12 +43,21 @@ func (app *application) writeJSON(w http.ResponseWriter, status int, data envelo
 	return nil
 }
 
-func (app *application) readJSON(_ http.ResponseWriter, r *http.Request, dst any) error {
-	err := json.NewDecoder(r.Body).Decode(dst)
+func (app *application) readJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	// restrict request body to 1MB or return http.MaxBytesError
+	max_bytes := 1_048_576
+	r.Body = http.MaxBytesReader(w, r.Body, int64(max_bytes))
+
+	decoder := json.NewDecoder(r.Body)
+	// if JSON from the client contains any fields which can not be mapped to the target destination,
+	// the decoder will now return an error
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(dst)
 	if err != nil {
 		var syntaxError *json.SyntaxError
 		var unmarshalTypeError *json.UnmarshalTypeError
 		var invalidUnmarshalError *json.InvalidUnmarshalError
+		var maxBytesError *http.MaxBytesError
 
 		switch {
 		case errors.As(err, &syntaxError):
@@ -68,9 +78,25 @@ func (app *application) readJSON(_ http.ResponseWriter, r *http.Request, dst any
 		case errors.As(err, &invalidUnmarshalError):
 			panic(err)
 
+		// If the JSON contains a field which cannot be mapped to the target struct,
+		// Decode() will return an error message in the format "json: unkown field "<name>""
+		case strings.HasPrefix(err.Error(), "json: unknown field"):
+			fieldName := strings.TrimPrefix(err.Error(), "json: unknown field")
+			return fmt.Errorf("body contains unknown key %s", fieldName)
+
+		case errors.As(err, &maxBytesError):
+			return fmt.Errorf("body must not be larger than %d bytes", maxBytesError.Limit)
+
 		default:
 			return err
 		}
+	}
+
+	// call Decode() again using a pointer to an empty anonymous struct
+	// if request body only contained 1 JSON, it will return io.EOF error
+	err = decoder.Decode(&struct{}{})
+	if !errors.Is(err, io.EOF) {
+		return errors.New("body must contain a single JSON value")
 	}
 
 	return nil
