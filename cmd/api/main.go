@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/aviagarwal1212/greenlight/internal/data"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -28,6 +29,7 @@ type config struct {
 type application struct {
 	config config
 	logger *slog.Logger
+	models data.Models
 }
 
 func main() {
@@ -60,6 +62,7 @@ func main() {
 	app := &application{
 		config: cfg,
 		logger: logger,
+		models: data.NewModel(db),
 	}
 
 	// setup http server

@@ -1,3 +1,4 @@
+// Package validator provides methods to standardize validation errors
 package validator
 
 import (
