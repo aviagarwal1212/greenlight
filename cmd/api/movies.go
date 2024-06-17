@@ -1,9 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/aviagarwal1212/greenlight/internal/data"
 	"github.com/aviagarwal1212/greenlight/internal/validator"
@@ -88,14 +88,18 @@ func (app *application) showMovieHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Create a dummy movie instance using the ID from the request URL.
-	movie := &data.Movie{
-		ID:        id,
-		CreatedAt: time.Now(),
-		Title:     "Casablanca",
-		Runtime:   102,
-		Genres:    []string{"drama", "romance", "war"},
-		Version:   1,
+	// Retrieve the movie instance from the database by its ID.
+	// If the movie is not found, send a 404 Not Found response.
+	// If there is any other error, send a 500 Internal Server Error response.
+	movie, err := app.models.Movies.Get(id)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.notFoundResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
+		return
 	}
 
 	// Write the movie instance to the response as JSON.

@@ -1,6 +1,8 @@
 package data
 
 import (
+	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/aviagarwal1212/greenlight/internal/validator"
@@ -40,6 +42,9 @@ type MovieModel struct {
 	DB *sqlx.DB
 }
 
+// Insert adds a new record for a movie to the database. If the insertion is successful,
+// the ID, CreatedAt, and Version fields of the movie are populated with the respective values
+// from the database. If any error occurs during the insertion, it returns that error.
 func (m MovieModel) Insert(movie *Movie) error {
 	query := `
 	INSERT INTO movies (title, year, runtime, genres)
@@ -51,8 +56,30 @@ func (m MovieModel) Insert(movie *Movie) error {
 	return err
 }
 
+// Get retrieves a movie from the database by its ID. If the movie with the specified ID is not found,
+// it returns an ErrRecordNotFound error. If any other error occurs during the query, it returns that error.
 func (m MovieModel) Get(id int64) (*Movie, error) {
-	return nil, nil
+	if id < 1 {
+		return nil, ErrRecordNotFound
+	}
+
+	query := `
+	SELECT id, created_at, title, year, runtime, genres, version
+	FROM movies
+	WHERE id = $1`
+
+	var movie Movie
+	err := m.DB.QueryRowx(query, id).Scan(&movie.ID, &movie.CreatedAt, &movie.Title, &movie.Year, &movie.Runtime, pq.Array(&movie.Genres), &movie.Version)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	return &movie, nil
 }
 
 func (m MovieModel) Update(movie *Movie) error {
