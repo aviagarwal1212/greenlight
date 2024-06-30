@@ -183,3 +183,45 @@ func (app *application) updateMovieHandler(w http.ResponseWriter, r *http.Reques
 		app.serverErrorResponse(w, r, err)
 	}
 }
+
+// deleteMovieHandler handles the deletion of a movie by its ID.
+// It reads the ID parameter from the request URL, and if the ID is valid,
+// it deletes the movie instance from the database and writes a success message back to the response.
+//
+// If the ID parameter cannot be read or is invalid, a not found response is sent.
+// If the movie is not found, a not found response is sent.
+// If there is any other error, a server error response is sent.
+// If there is an error writing the JSON response, a server error response is sent.
+//
+// The response will contain a success message with 204 StatusNoContent if the movie is deleted successfully.
+//
+// The expected JSON structure for the response body is:
+//
+//	{
+//	  "message": "movie deleted successfully"
+//	}
+func (app *application) deleteMovieHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := app.readIDParam(r)
+	if err != nil {
+		app.notFoundResponse(w, r)
+		return
+	}
+
+	err = app.models.Movies.Delete(id)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.notFoundResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
+
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusNoContent, envelope{"message": "movie deleted successfully"}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+
+}

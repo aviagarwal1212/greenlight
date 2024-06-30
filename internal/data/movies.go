@@ -82,6 +82,36 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 	return &movie, nil
 }
 
+// Update updates an existing movie record in the movies table with the
+// details provided in the movie parameter. It updates the title, year,
+// runtime, genres, and automatically increments the version. The updated
+// version is returned and set in the movie object.
+//
+// Parameters:
+// - movie: A pointer to the Movie struct containing the updated details.
+//
+// Returns:
+// - error: Returns an error if the update operation fails.
+//
+// Usage example:
+//
+//	movie := &Movie{
+//	  ID:      1,
+//	  Title:   "New Title",
+//	  Year:    2023,
+//	  Runtime: 120,
+//	  Genres:  []string{"Action", "Drama"},
+//	}
+//
+//	err := movieModel.Update(movie)
+//	if err != nil {
+//	  log.Fatalf("Unable to update movie: %v", err)
+//	}
+//
+// Notes:
+//   - The function presumes that the version field in the Movie struct is
+//     meant to track the update count and ensures it is incremented upon
+//     each update.
 func (m MovieModel) Update(movie *Movie) error {
 	query := `
 	UPDATE movies
@@ -89,11 +119,61 @@ func (m MovieModel) Update(movie *Movie) error {
 	WHERE id = $5
 	RETURNING version`
 
+	// movie.Genres have to be transformed to a postgreSQL array
 	args := []any{movie.Title, movie.Year, movie.Runtime, pq.Array(movie.Genres), movie.ID}
 
 	return m.DB.QueryRowx(query, args...).Scan(&movie.Version)
 }
 
+// Delete removes a movie record from the movies table based on the provided ID.
+// If the movie with the specified ID is not found, it returns an ErrRecordNotFound error.
+// If any other error occurs during the deletion, it returns that error.
+//
+// Parameters:
+// - id: The ID of the movie to be deleted.
+//
+// Returns:
+// - error: Returns an error if the deletion operation fails or if the movie with the specified ID is not found.
+//
+// Usage example:
+//
+//	err := movieModel.Delete(1)
+//	if err != nil {
+//	  if errors.Is(err, ErrRecordNotFound) {
+//	    log.Printf("No movie found with the specified ID.")
+//	  } else {
+//	    log.Fatalf("Unable to delete movie: %v", err)
+//	  }
+//	}
+//
+// Notes:
+//   - The function checks if the provided ID is a positive number before attempting the deletion.
+//   - It executes a DELETE SQL query to remove the movie record from the database.
+//   - It checks the number of rows affected by the DELETE operation to determine if the movie was found and deleted.
 func (m MovieModel) Delete(id int64) error {
+	// id has to be a positive number
+	if id < 1 {
+		return ErrRecordNotFound
+	}
+
+	// execute delete query
+	query := `
+	DELETE FROM movies
+	WHERE id = $1
+	`
+	result, err := m.DB.Exec(query, id)
+	if err != nil {
+		return err
+	}
+
+	// check if any row was actually deleted
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrRecordNotFound
+	}
+
 	return nil
 }
