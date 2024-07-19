@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -52,7 +53,12 @@ func (m MovieModel) Insert(movie *Movie) error {
 	RETURNING id, created_at, version`
 
 	args := []any{movie.Title, movie.Year, movie.Runtime, pq.Array(movie.Genres)}
-	err := m.DB.QueryRowx(query, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
+
+	// create a context for 3-seconds
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.DB.QueryRowxContext(ctx, query, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
 	return err
 }
 
@@ -64,12 +70,19 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 	}
 
 	query := `
-	SELECT id, created_at, title, year, runtime, genres, version
-	FROM movies
-	WHERE id = $1`
+		SELECT id, created_at, title, year, runtime, genres, version
+		FROM movies
+		WHERE id = $1`
 
 	var movie Movie
-	err := m.DB.QueryRowx(query, id).Scan(&movie.ID, &movie.CreatedAt, &movie.Title, &movie.Year, &movie.Runtime, pq.Array(&movie.Genres), &movie.Version)
+
+	// 3 second timeout for the query
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// response of pg_sleep(8) is stored in an empty byte
+	// using QueryRowxContext to pass in the context to the query
+	err := m.DB.QueryRowxContext(ctx, query, id).Scan(&movie.ID, &movie.CreatedAt, &movie.Title, &movie.Year, &movie.Runtime, pq.Array(&movie.Genres), &movie.Version)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -122,9 +135,13 @@ func (m MovieModel) Update(movie *Movie) error {
 	// movie.Genres have to be transformed to a postgreSQL array
 	args := []any{movie.Title, movie.Year, movie.Runtime, pq.Array(movie.Genres), movie.ID, movie.Version}
 
+	// add a three-second timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
 	// execute the SQL query.
 	// if no matching row is found, it returns ErrEditConflict
-	err := m.DB.QueryRowx(query, args...).Scan(&movie.Version)
+	err := m.DB.QueryRowxContext(ctx, query, args...).Scan(&movie.Version)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -173,7 +190,12 @@ func (m MovieModel) Delete(id int64) error {
 	DELETE FROM movies
 	WHERE id = $1
 	`
-	result, err := m.DB.Exec(query, id)
+
+	// add a three-second context
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	result, err := m.DB.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
